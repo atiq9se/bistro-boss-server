@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const port = process.env.PORT || 5000;
 
 app.use(cors());
@@ -31,6 +32,28 @@ async function run() {
     const usersCollection = client.db("bistroDb").collection("users")
     const reviewsCollection = client.db("bistroDb").collection("reviews")
     const cartsCollection = client.db("bistroDb").collection("carts")
+
+    app.post('/jwt', async(req, res)=>{
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {expiresIn: '1h'});
+      res.send({ token })
+    })
+
+    const verifyToken = (req, res, next)=>{
+      console.log('inside verify token', req.headers.authorization);
+      if(!req.headers.authorization){
+        return res.status(401).send({message: 'forbidden access'})
+      }
+      const token = req.headers.authorization.split(' ')[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded)=>{
+          if(err){
+            return res.status(401).send({message: 'forbidden access'})
+          }
+          req.decoded = decoded;
+          next();
+      })
+      //next();
+    }
     
     app.post('/users', async(req, res)=>{
       const user = req.body;
@@ -45,9 +68,23 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/users', async(req, res)=>{
+    app.get('/users', verifyToken, async(req, res)=>{
       const result = await usersCollection.find().toArray();
       res.send(result);
+    })
+
+    app.get('/user/admin/:email', verifyToken, async(req, res)=>{
+        const email = req.params.email;
+        if(email !== req.decoded.email){
+          return res.status(403).send({message: 'unauthoried access'})
+        }
+        const query = {email: email};
+        const user = await usersCollection.findOne(query);
+        let admin = false;
+        if(user){
+          admin = user?.role ==="admin";
+        }
+        res.send({admin});
     })
 
     app.patch('/users/admin/:id', async(req, res)=>{
