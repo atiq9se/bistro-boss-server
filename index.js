@@ -3,11 +3,12 @@ const express = require('express');
 const app = express();
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+
 const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json())
-
 
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -32,6 +33,7 @@ async function run() {
     const usersCollection = client.db("bistroDb").collection("users")
     const reviewsCollection = client.db("bistroDb").collection("reviews")
     const cartsCollection = client.db("bistroDb").collection("carts")
+    const paymentsCollection = client.db("bistroDb").collection("payments")
 
     // jwt related api
     app.post('/jwt', async(req, res)=>{
@@ -43,7 +45,7 @@ async function run() {
     //middlewares
     const verifyToken = (req, res, next)=>{
       //console.log(req.headers);
-      console.log('inside verify token', req.headers.authorization);
+      //console.log('inside verify token', req.headers.authorization);
       if(!req.headers.authorization){
         return res.status(401).send({message: 'unauthorize access'})
       }
@@ -184,6 +186,45 @@ async function run() {
       const id = req.params.id;
       const query = {_id:new ObjectId(id)}
       const result = await cartsCollection.deleteOne(query);
+      res.send(result)
+    })
+
+    //Payment intent
+    app.post('/create-payment-intent', async (req, res)=>{
+      const {price} = req.body;
+      const amount = parseInt(price * 100);
+      console.log(amount, 'amount inside the intent')
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: 'usd', 
+        payment_method_types:['card']
+      })
+      res.send({
+        clientSecret: paymentIntent.client_secret
+      })
+    })
+
+    app.post('/payments', async (req, res)=>{
+      const payment = req.body;
+      const paymentResult = await paymentsCollection.insertOne(payment);
+      
+      //carefully delete each item from the database
+      console.log('payment info', payment)
+      const query = {_id:{
+        $in: payment.cartIds.map(id=> new ObjectId(id))
+      }}
+      const deleteResult = await cartsCollection.deleteMany(query);
+      res.send({paymentResult, deleteResult})
+
+    })
+    
+    app.get('/payments/:email', async(req, res)=>{
+      const query = {email: req.params.email}
+      if(req.params.email !== req.decoded.email){
+         return res.status(303).send({message: 'unauthorized forbidden'})
+      }
+      const result = await paymentsCollection.find(query).toArray();
       res.send(result)
     })
 
