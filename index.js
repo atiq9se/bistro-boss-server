@@ -221,11 +221,23 @@ async function run() {
     
     app.get('/payments/:email', async(req, res)=>{
       const query = {email: req.params.email}
-      if(req.params.email !== req.decoded.email){
-         return res.status(303).send({message: 'unauthorized forbidden'})
-      }
+      // if(req.params.email !== req.decoded.email){
+      //    return res.status(303).send({message: 'unauthorized forbidden'})
+      // }
       const result = await paymentsCollection.find(query).toArray();
       res.send(result)
+    })
+
+    app.get('/admin-stars', async(req, res)=>{
+      const users = await usersCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentsCollection.estimatedDocumentCount();
+      const payments = await paymentsCollection.find().toArray();
+      const revenue = payments.reduce((total, payment)=>total+payment.price, 0)
+
+      res.send({
+        users, menuItems, orders, revenue
+      })
     })
 
     await client.db("admin").command({ ping: 1 });
