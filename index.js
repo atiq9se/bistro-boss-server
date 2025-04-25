@@ -228,15 +228,33 @@ async function run() {
       res.send(result)
     })
 
-    app.get('/admin-stars', async(req, res)=>{
+    app.get('/admin-stats', verifyToken, verifyAdmin, async(req, res)=>{
       const users = await usersCollection.estimatedDocumentCount();
       const menuItems = await menuCollection.estimatedDocumentCount();
       const orders = await paymentsCollection.estimatedDocumentCount();
-      const payments = await paymentsCollection.find().toArray();
-      const revenue = payments.reduce((total, payment)=>total+payment.price, 0)
+
+      //this is not the best way
+      // const payments = await paymentsCollection.find().toArray();
+      // const revenue = payments.reduce((total, payment)=>total+payment.price, 0)
+
+      const result = await paymentsCollection.aggregate([
+        {
+          $group:{
+            _id:null,
+            totalRevenue: {
+              $sum: '$price'
+            }
+          }
+        }
+      ]).toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
 
       res.send({
-        users, menuItems, orders, revenue
+        users, 
+        menuItems, 
+        orders, 
+        revenue
       })
     })
 
